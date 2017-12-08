@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.oristartech.mapper.TicketMapper">
+	<!-- 1.根据场次编码查询剩余待售影票数量-->
+	<resultMap type="com.oristartech.pojo.ForSale_ticket" id="listForSale_Ticket">
+	   <id property="forSale_ticket_code" column="forSale_ticket_code"/>
+	   <result property="session_code" column="session_code"/>
+	   <result property="screen_code" column="screen_code"/>
+	   <result property="cinema_code" column="cinema_code"/>
+	   <result property="seat_code" column="seat_code"/>
+	   <result property="seat_type" column="seat_type"/>
+	   <result property="sales_status" column="sales_status"/>
+	   <result property="price" column="price"/>
+	   <result property="film_code" column="film_code"/>
+	   <result property="begin_time" column="begin_time"/>
+	</resultMap>
+	<select id="findForSaleTicketLeft" resultType="com.oristartech.pojo.TicketNum">
+		SELECT
+		session_code,
+		COUNT(sales_status) ticket_num,
+		SUM(IF(sales_status='s3',1,0)) ticket_left_num
+		FROM forsale_ticket
+		WHERE session_code IN
+		<foreach collection="list" item="session_code" index="index"
+			open="(" close=")" separator=",">
+			#{session_code}
+		</foreach>
+		GROUP BY session_code;
+	</select>
+
+	<!--2.根据场次编码查询待售影票信息集合  -->
+	<select id="findForSaleTicket" resultType="com.oristartech.pojo.ForSale_ticket">
+		SELECT * FROM forsale_ticket WHERE session_code=#{session_code}
+	</select>
+	
+	<!-- 3.查询票集合的状态(返回值是指不是s3的影票数量)-->
+	<select id="quertTicketStatus" resultType="java.lang.Integer">
+		select count(sales_status) from forsale_ticket where
+		sales_status!='s3' and forSale_ticket_code in
+		<foreach collection="list" item="item" index="index" open="(" close=")" separator=",">
+			#{item.forSale_ticket_code}
+		</foreach>
+	</select>
+
+	<!--4.根据待售影票编码，锁定指定影票  -->
+	<update id="forSaleTicketLock">
+		UPDATE forsale_ticket SET sales_status='s2'
+		WHERE forSale_ticket_code IN
+		<foreach collection="list" item="item" index="index" open="(" close=")" separator=",">
+			#{item.forSale_ticket_code}
+		</foreach>
+	</update>
+	
+	<!-- 5.根据待售影票编码，释放指定影票 -->
+	<update id="forSaleTicketRelease">
+		UPDATE forsale_ticket SET sales_status='s3' WHERE
+		forSale_ticket_code IN
+		<foreach collection="list" item="item" index="index" open="(" close=")" separator=",">
+			#{item.forSale_ticket_code}
+		</foreach>
+	</update>
+
+	<!--6.根据待售影票编码集合，售出集合里所有的影票  -->
+	<update id="forSaleTicketSold">
+		UPDATE forsale_ticket SET sales_status='s1' 
+		WHERE forSale_ticket_code in
+		<foreach collection="list" item="forSale_ticket_code" index="index"
+			open="(" close=")" separator=",">
+			#{forSale_ticket_code}
+		</foreach>
+	</update>
+	
+	<!-- 7.根据座位图例编码,查询图片 -->
+	<select id="findSeatStatusImage" resultType="com.oristartech.pojo.SalesStatusImage">
+		SELECT sales_status,sales_status_name,image_url FROM sales_status_image
+	</select>
+	
+	<!-- 8.根据座位类型,日期查符合要求的场次编码集合 -->
+	<select id="findFilmCodeBySeatType" resultType="String">
+		SELECT DISTINCT film_code FROM forsale_ticket
+		WHERE seat_type=#{0} AND
+		DATE_FORMAT(begin_time,'%Y-%m-%d')=DATE_FORMAT(#{1},'%Y-%m-%d')
+		AND DATE_FORMAT(begin_time,'%H:%i:%s') BETWEEN DATE_FORMAT(#{1},'%H:%i:%s')
+		AND '23:59'
+	</select>
+	
+	<!--9.将销售出去的影票信息存储到票库中  -->
+	<insert id="insertTicket" parameterType="com.oristartech.pojo.Ticket">
+		INSERT INTO ticket
+		(ticket_code,forSale_ticket_code,ticket_type,ticket_price)
+		VALUES
+		<foreach collection ="list" item="ticket" index= "index" separator =",">
+                 (
+                #{ticket.ticket_code}, 
+                #{ticket.forSale_ticket_code},
+                #{ticket.ticket_type},
+                #{ticket.ticket_price}
+                )
+             </foreach >
+	</insert>
+
+	<!--10.根据待售影票编码删除票库影票数据  -->
+	<delete id="deletTicketByTicketCode">
+		DELETE FROM ticket WHERE forSale_ticket_code=#{forSale_ticket_code}
+	</delete>
+
+		<!--  根据待售影票编码集合查询待售影票信息
+		 * @param forSale_ticket_code
+		 * @return 待售影票 -->
+	<select id="queryForSaleTicket" resultMap="listForSale_Ticket">
+		SELECT * FROM forsale_ticket 
+		WHERE forSale_ticket_code in 
+		<foreach collection="list" item="forSale_ticket_code" index="index"
+			open="(" close=")" separator=",">
+			#{forSale_ticket_code}
+		</foreach>
+	</select>
+
+</mapper>
